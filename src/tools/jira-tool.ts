@@ -1,17 +1,20 @@
 import { JIRA_TICKETS, type JiraTicketFixture } from "./fixtures/jira";
+import { matchesAnyToken, tokenize } from "./search-util";
 
 export type JiraTicket = JiraTicketFixture;
 
-/** Deterministic mock of `jira.searchTickets`. */
+/** Deterministic mock of `jira.searchTickets` — exact ticket id, else any token match. */
 export function searchTickets(query: string): JiraTicket[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  return JIRA_TICKETS.filter(
-    (ticket) =>
-      ticket.id.toLowerCase() === q ||
-      ticket.title.toLowerCase().includes(q) ||
-      ticket.body.toLowerCase().includes(q),
-  );
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const q = trimmed.toLowerCase();
+  const byId = JIRA_TICKETS.filter((ticket) => ticket.id.toLowerCase() === q);
+  if (byId.length > 0) return byId;
+
+  const tokens = tokenize(trimmed);
+  if (tokens.length === 0) return [];
+  return JIRA_TICKETS.filter((ticket) => matchesAnyToken(`${ticket.title} ${ticket.body}`, tokens));
 }
 
 /** Deterministic mock of `jira.readTicket`. */

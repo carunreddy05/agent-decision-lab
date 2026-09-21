@@ -3,11 +3,37 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /*
+   * Route categorical colors — fixed slots from the validated palette
+   * (dataviz skill), assigned in the Route taxonomy's own order and never
+   * reassigned by rank/probability. Identity always carries a text label
+   * too; color is never the only signal (see the light-mode contrast note
+   * below).
+   */
+  --route-direct-answer: #2a78d6;
+  --route-docs: #eb6834;
+  --route-github: #1baf7a;
+  --route-jira: #eda100;
+  --route-reject: #e87ba4;
+
+  /* Status colors — fixed, never themed, always paired with an icon + label. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-route-direct-answer: var(--route-direct-answer);
+  --color-route-docs: var(--route-docs);
+  --color-route-github: var(--route-github);
+  --color-route-jira: var(--route-jira);
+  --color-route-reject: var(--route-reject);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-critical: var(--status-critical);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -16,6 +42,12 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --route-direct-answer: #3987e5;
+    --route-docs: #d95926;
+    --route-github: #199e70;
+    --route-jira: #c98500;
+    --route-reject: #d55181;
   }
 }
 

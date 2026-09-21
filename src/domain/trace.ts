@@ -2,7 +2,12 @@ import type { Action } from "./action";
 import type { PolicyDecision } from "./policy";
 import type { RoutingDecision } from "./route";
 
-export type Strategy = "JEV_ONLY" | "CLAUDE_ONLY" | "HYBRID";
+/**
+ * MOCK is a Phase 1-2 development strategy — deterministic, network-free
+ * routing used to build and test the pipeline before real providers exist.
+ * It is never used to produce reported benchmark numbers (see ADR-005).
+ */
+export type Strategy = "MOCK" | "JEV_ONLY" | "CLAUDE_ONLY" | "HYBRID";
 
 /**
  * Why (if at all) a hybrid run escalated to Claude. Kept as a tagged reason
@@ -23,10 +28,14 @@ export interface EscalationInfo {
   detail?: string;
 }
 
+/** A single flat mock-tool result item (a doc, PR, or ticket) for display. */
+export type ExecutionResultItem = Record<string, string | number>;
+
 export interface ExecutionResult {
   tool: string;
   status: "success" | "skipped" | "error";
   detail?: string;
+  results?: ExecutionResultItem[];
 }
 
 export interface Trace {
