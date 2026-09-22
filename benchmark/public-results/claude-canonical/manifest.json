@@ -1,0 +1,20 @@
+{
+  "benchmarkSchemaVersion": "benchmark-schema-v1",
+  "runId": "20260922-165824-claude-only",
+  "timestamp": "2026-09-22T17:01:09.117Z",
+  "gitCommit": "78d36fc11daf767ffc168e40fd284770eacd38d9",
+  "gitDirty": true,
+  "datasetVersion": "1.0",
+  "datasetHash": "d3617240469f7b560e0d78adf9bee7afb500d8ccc650d9eac39bc76f7b952856",
+  "routingSpecVersion": "routing-spec-v1",
+  "strategy": "CLAUDE_ONLY",
+  "requestedModelIdentifiers": {
+    "claude": "claude-sonnet-5"
+  },
+  "pricingConfigVersion": "pricing-v1-2026-09-22",
+  "requestedCaseCount": 100,
+  "actualCaseCount": 100,
+  "fullDataset": true,
+  "dryRun": false,
+  "nodeVersion": "v22.17.0"
+}

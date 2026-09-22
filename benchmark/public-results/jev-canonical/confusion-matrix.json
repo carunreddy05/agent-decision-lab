@@ -1,0 +1,53 @@
+{
+  "routes": [
+    "DIRECT_ANSWER",
+    "DOCS",
+    "GITHUB",
+    "JIRA",
+    "REJECT"
+  ],
+  "matrix": {
+    "DIRECT_ANSWER": {
+      "DIRECT_ANSWER": 10,
+      "DOCS": 0,
+      "GITHUB": 0,
+      "JIRA": 0,
+      "REJECT": 0
+    },
+    "DOCS": {
+      "DIRECT_ANSWER": 2,
+      "DOCS": 16,
+      "GITHUB": 0,
+      "JIRA": 0,
+      "REJECT": 0
+    },
+    "GITHUB": {
+      "DIRECT_ANSWER": 0,
+      "DOCS": 0,
+      "GITHUB": 26,
+      "JIRA": 0,
+      "REJECT": 0
+    },
+    "JIRA": {
+      "DIRECT_ANSWER": 1,
+      "DOCS": 2,
+      "GITHUB": 4,
+      "JIRA": 23,
+      "REJECT": 0
+    },
+    "REJECT": {
+      "DIRECT_ANSWER": 0,
+      "DOCS": 0,
+      "GITHUB": 0,
+      "JIRA": 0,
+      "REJECT": 16
+    }
+  },
+  "failureColumn": {
+    "DIRECT_ANSWER": 0,
+    "DOCS": 0,
+    "GITHUB": 0,
+    "JIRA": 0,
+    "REJECT": 0
+  }
+}

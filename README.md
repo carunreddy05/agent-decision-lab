@@ -396,6 +396,17 @@ The full CLI (strategies, pacing, case limits, offline threshold
 simulation) is documented in
 [`benchmark/reports/benchmark-summary.md`](benchmark/reports/benchmark-summary.md#reproducibility).
 
+### Public Benchmark Evidence
+
+[`benchmark/public-results/`](benchmark/public-results/) publishes a
+small, sanitized, checksum-verified snapshot of the machine-readable
+result files behind this README's headline numbers — no raw prompts, no
+credentials, copied byte-for-byte from the original runs. Run
+`npx tsx scripts/verify-public-results.ts` to recompute every headline
+number (routing accuracy, provider relationship, all five Hybrid
+threshold rows, RC-048/RC-049, the rate-limit incident) directly from
+those files — no API key, no network access required.
+
 ## Architecture Decision Records
 
 - [ADR-003: Decision, Authorization, and Execution Are Separate Boundaries](docs/adr/ADR-003-decision-authorization-execution.md)

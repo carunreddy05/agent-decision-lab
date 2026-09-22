@@ -1,0 +1,21 @@
+{
+  "benchmarkSchemaVersion": "benchmark-schema-v1",
+  "runId": "20260922-174506-jev-only",
+  "timestamp": "2026-09-22T17:48:53.813Z",
+  "gitCommit": "2fea68278238dabff052983926cd3e046ff8c516",
+  "gitDirty": false,
+  "datasetVersion": "1.0",
+  "datasetHash": "d3617240469f7b560e0d78adf9bee7afb500d8ccc650d9eac39bc76f7b952856",
+  "routingSpecVersion": "routing-spec-v1",
+  "strategy": "JEV_ONLY",
+  "requestedModelIdentifiers": {
+    "jev": "typesafe-ai/jev"
+  },
+  "pricingConfigVersion": "pricing-v1-2026-09-22",
+  "requestedCaseCount": 100,
+  "actualCaseCount": 100,
+  "fullDataset": true,
+  "dryRun": false,
+  "nodeVersion": "v22.17.0",
+  "pacingMs": 2000
+}

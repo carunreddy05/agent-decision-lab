@@ -208,6 +208,13 @@ npm run benchmark -- --strategy threshold-simulation \
   --claude-run benchmark/results/<claude-run-id>
 ```
 
+A small, checksum-verified, sanitized snapshot of the actual
+machine-readable evidence behind every number in this document is
+published at [`benchmark/public-results/`](public-results/) — see that
+directory's own README for what's included and
+`scripts/verify-public-results.ts` to recompute the headline numbers
+directly from it, with no API key and no provider call.
+
 ## Detailed Source Reports
 
 - [`phase8b-baseline-results.md`](phase8b-baseline-results.md) — original Jev/Claude baseline run (Jev run rate-limited)
