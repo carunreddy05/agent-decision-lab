@@ -26,6 +26,7 @@ function manifest(overrides: Partial<RunManifest> = {}): RunManifest {
     fullDataset: true,
     dryRun: false,
     nodeVersion: "v22.0.0",
+    pacingMs: 0,
     ...overrides,
   };
 }

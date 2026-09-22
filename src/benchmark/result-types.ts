@@ -43,6 +43,14 @@ export interface CaseResultBase {
   succeeded: boolean;
   /** Safe error class name only (e.g. "ProviderTimeoutError"); present iff !succeeded. */
   errorCategory?: string;
+  /**
+   * The provider's own `Retry-After` value in milliseconds (Phase 8C-B),
+   * propagated only when `errorCategory === "ProviderRateLimitError"` AND
+   * the provider actually supplied it — never fabricated as 0 when absent,
+   * never a raw header or response body. Observability only: nothing reads
+   * this value to drive retry/backoff behavior.
+   */
+  retryAfterMs?: number;
 }
 
 export interface JevOnlyCaseResult extends CaseResultBase {

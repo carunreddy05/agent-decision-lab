@@ -34,6 +34,7 @@ describe("buildManifest", () => {
       actualCaseCount: 100,
       fullDataset: true,
       dryRun: true,
+      pacingMs: 0,
       now: new Date(Date.UTC(2026, 8, 22)),
       cwd: "/tmp",
     });
@@ -44,6 +45,7 @@ describe("buildManifest", () => {
     expect(manifest.pricingConfigVersion).toBe(PRICING_CONFIG_VERSION);
     expect(manifest.requestedModelIdentifiers).toEqual({ jev: expect.any(String) });
     expect(manifest.fullDataset).toBe(true);
+    expect(manifest.pacingMs).toBe(0);
   });
 
   it("includes threshold only for HYBRID", () => {
@@ -57,6 +59,7 @@ describe("buildManifest", () => {
       actualCaseCount: 5,
       fullDataset: false,
       dryRun: true,
+      pacingMs: 0,
     });
     expect(jevManifest.threshold).toBeUndefined();
 
@@ -71,6 +74,7 @@ describe("buildManifest", () => {
       actualCaseCount: 5,
       fullDataset: false,
       dryRun: true,
+      pacingMs: 0,
     });
     expect(hybridManifest.threshold).toBe(0.9);
     expect(hybridManifest.requestedModelIdentifiers).toEqual({ jev: expect.any(String), claude: expect.any(String) });
@@ -87,7 +91,24 @@ describe("buildManifest", () => {
       routingSpecVersion: "routing-spec-v1",
       fullDataset: false,
       dryRun: true,
+      pacingMs: 0,
     });
     expect(manifest.fullDataset).toBe(false);
+  });
+
+  it("persists a positive pacingMs exactly as configured", () => {
+    const manifest = buildManifest({
+      runId: "r4",
+      strategy: "JEV_ONLY",
+      datasetVersion: "1.0",
+      datasetHash: "h",
+      routingSpecVersion: "routing-spec-v1",
+      requestedCaseCount: 100,
+      actualCaseCount: 100,
+      fullDataset: true,
+      dryRun: false,
+      pacingMs: 2000,
+    });
+    expect(manifest.pacingMs).toBe(2000);
   });
 });

@@ -79,6 +79,45 @@ describe("parseCliArgs", () => {
     if (result.ok) expect(result.config.thresholds).toEqual([0.7, 0.9]);
   });
 
+  describe("--pacing-ms", () => {
+    it("defaults to 0 when omitted", () => {
+      const result = parseCliArgs(["--strategy", "jev"], DEFAULTS);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.config.pacingMs).toBe(0);
+    });
+
+    it("accepts 0 explicitly", () => {
+      const result = parseCliArgs(["--strategy", "jev", "--pacing-ms", "0"], DEFAULTS);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.config.pacingMs).toBe(0);
+    });
+
+    it("accepts a positive integer", () => {
+      const result = parseCliArgs(["--strategy", "jev", "--pacing-ms", "2000"], DEFAULTS);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.config.pacingMs).toBe(2000);
+    });
+
+    it("rejects a negative value", () => {
+      expect(parseCliArgs(["--strategy", "jev", "--pacing-ms", "-1"], DEFAULTS).ok).toBe(false);
+      // The "=" form reaches our own validation (rather than node:util's
+      // ambiguous-option error) and must also be rejected.
+      expect(parseCliArgs(["--strategy", "jev", "--pacing-ms=-1"], DEFAULTS).ok).toBe(false);
+    });
+
+    it("rejects a non-numeric value", () => {
+      expect(parseCliArgs(["--strategy", "jev", "--pacing-ms", "abc"], DEFAULTS).ok).toBe(false);
+    });
+
+    it("rejects a non-integer value", () => {
+      expect(parseCliArgs(["--strategy", "jev", "--pacing-ms", "1.5"], DEFAULTS).ok).toBe(false);
+    });
+
+    it("rejects a missing value after the flag", () => {
+      expect(parseCliArgs(["--strategy", "jev", "--pacing-ms"], DEFAULTS).ok).toBe(false);
+    });
+  });
+
   it("defaults dataset/output paths when not overridden", () => {
     const result = parseCliArgs(["--strategy", "jev"], DEFAULTS);
     expect(result.ok).toBe(true);
@@ -102,6 +141,18 @@ describe("planDryRun", () => {
     expect(plan.fullDataset).toBe(true);
     expect(plan.providersThatWouldBeCalled).toEqual(["jev"]);
     expect(plan.maxPossibleProviderCalls).toBe(100);
+    expect(plan.pacingMs).toBe(0);
+  });
+
+  it("reports the configured pacingMs without ever sleeping", () => {
+    const config = parseCliArgs(["--strategy", "jev", "--pacing-ms", "2000", "--dry-run"], DEFAULTS);
+    if (!config.ok) throw new Error("expected ok");
+    const start = Date.now();
+    const plan = planDryRun(config.config, dataset(100), "hash", git);
+    expect(plan.pacingMs).toBe(2000);
+    expect(plan.actualCaseCount).toBe(100);
+    expect(plan.providersThatWouldBeCalled).toEqual(["jev"]);
+    expect(Date.now() - start).toBeLessThan(100);
   });
 
   it("marks fullDataset false and shrinks actualCaseCount when --limit is set", () => {

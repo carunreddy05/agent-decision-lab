@@ -1,7 +1,7 @@
 import type { Action } from "@/domain/action";
 import type { PolicyResult } from "@/domain/policy";
 import type { Route } from "@/domain/route";
-import { HybridFallbackFailedError } from "@/domain/errors";
+import { HybridFallbackFailedError, ProviderRateLimitError } from "@/domain/errors";
 import { assertValidRoutingDecision } from "@/domain/validate";
 import { evaluatePolicy } from "@/policy/policy-engine";
 import { deriveAction } from "@/pipeline/derive-action";
@@ -22,6 +22,16 @@ export interface CaseRunnerContext {
 
 function errorCategoryOf(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
+}
+
+/**
+ * Safe, observability-only propagation of the provider's own `Retry-After`
+ * value (Phase 8C-B) — undefined whenever the error isn't a rate limit, or
+ * when the provider didn't supply one; never fabricated as 0. Nothing
+ * reads this to drive retry/backoff behavior.
+ */
+function retryAfterMsOf(error: unknown): number | undefined {
+  return error instanceof ProviderRateLimitError ? error.retryAfterMs : undefined;
 }
 
 function baseFields(benchCase: BenchmarkCase, ctx: CaseRunnerContext) {
@@ -118,6 +128,7 @@ export async function runJevOnlyCase(
       strategy: "JEV_ONLY",
       succeeded: false,
       errorCategory: errorCategoryOf(error),
+      retryAfterMs: retryAfterMsOf(error),
     };
   }
 }
@@ -154,6 +165,7 @@ export async function runClaudeOnlyCase(
       strategy: "CLAUDE_ONLY",
       succeeded: false,
       errorCategory: errorCategoryOf(error),
+      retryAfterMs: retryAfterMsOf(error),
     };
   }
 }
@@ -219,6 +231,14 @@ export async function runHybridCase(
     };
   } catch (error) {
     if (error instanceof HybridFallbackFailedError) {
+      // retryAfterMs is not recoverable here (Phase 8C-B): decideHybrid()'s
+      // internal errorCategoryOf() already reduces the underlying Jev/
+      // Claude error down to a class-name string before this error is
+      // constructed, so the original error object (and any retryAfterMs on
+      // it) no longer exists by the time it reaches this catch block. Left
+      // unset rather than guessed — extending HybridFallbackFailedError or
+      // decideHybrid() itself to preserve it is out of scope for this
+      // phase (see phase8c-pacing-and-retry-metadata.md's deviations).
       return {
         ...base,
         strategy: "HYBRID",
@@ -241,6 +261,7 @@ export async function runHybridCase(
       threshold,
       succeeded: false,
       errorCategory: errorCategoryOf(error),
+      retryAfterMs: retryAfterMsOf(error),
       fallbackTriggered: false,
       claudeCalled: false,
       jevResolvedWithoutFallback: false,

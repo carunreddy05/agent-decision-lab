@@ -29,6 +29,18 @@ export interface RunManifest {
   fullDataset: boolean;
   dryRun: boolean;
   nodeVersion: string;
+  /**
+   * Fixed, non-adaptive delay (ms) the outer benchmark loop waited between
+   * cases (Phase 8C-B) — 0 when pacing wasn't requested, the exact
+   * configured value otherwise. This is benchmark execution configuration,
+   * never a provider property: it is never included in any
+   * `latencyMs` figure, which continues to measure only the provider call
+   * itself. Added additively to `benchmark-schema-v1` (no version bump —
+   * nothing parses/validates historical artifacts against this schema's
+   * shape, so an old manifest simply predates this field rather than being
+   * invalidated by it).
+   */
+  pacingMs: number;
 }
 
 /** Never throws — an unavailable git binary/repo degrades to "UNKNOWN", not a crashed run. */
@@ -85,6 +97,7 @@ export function buildManifest(params: {
   actualCaseCount: number;
   fullDataset: boolean;
   dryRun: boolean;
+  pacingMs: number;
   now?: Date;
   cwd?: string;
 }): RunManifest {
@@ -106,5 +119,6 @@ export function buildManifest(params: {
     fullDataset: params.fullDataset,
     dryRun: params.dryRun,
     nodeVersion: process.version,
+    pacingMs: params.pacingMs,
   };
 }

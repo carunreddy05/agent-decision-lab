@@ -24,6 +24,14 @@ export interface CliConfig {
   claudeRunDir?: string;
   datasetPath: string;
   outputDir: string;
+  /**
+   * Fixed, non-adaptive delay (ms) the outer benchmark loop waits between
+   * cases (Phase 8C-B) — never inside a provider adapter, never based on
+   * the previous case's latency/status/correctness. Always present and
+   * always 0 unless `--pacing-ms` was passed, so a run's provenance always
+   * states its pacing explicitly rather than leaving it implicit.
+   */
+  pacingMs: number;
 }
 
 export type ParsedCliArgs = { ok: true; config: CliConfig } | { ok: false; error: string };
@@ -57,6 +65,7 @@ export function parseCliArgs(argv: readonly string[], defaults: CliDefaults): Pa
         "claude-run": { type: "string" },
         dataset: { type: "string" },
         out: { type: "string" },
+        "pacing-ms": { type: "string" },
       },
       strict: true,
       allowPositionals: false,
@@ -111,6 +120,21 @@ export function parseCliArgs(argv: readonly string[], defaults: CliDefaults): Pa
     }
   }
 
+  // Deliberately a strict "digits only" check, not Number()/Number.isInteger:
+  // this rejects "-1", "1.5", "1e3", "", and whitespace-only strings without
+  // needing separate range/integer checks, and it never misparses a
+  // negative value as valid (node:util.parseArgs itself already rejects a
+  // bare `--pacing-ms -1` as an ambiguous option before we even see it here
+  // — this regex is what catches the `--pacing-ms=-1` form).
+  const pacingMsRaw = values["pacing-ms"] as string | undefined;
+  let pacingMs = 0;
+  if (pacingMsRaw !== undefined) {
+    if (!/^\d+$/.test(pacingMsRaw)) {
+      return { ok: false, error: `--pacing-ms must be a non-negative integer (got "${pacingMsRaw}").` };
+    }
+    pacingMs = Number(pacingMsRaw);
+  }
+
   return {
     ok: true,
     config: {
@@ -123,6 +147,7 @@ export function parseCliArgs(argv: readonly string[], defaults: CliDefaults): Pa
       claudeRunDir: values["claude-run"] as string | undefined,
       datasetPath: (values.dataset as string | undefined) ?? defaults.datasetPath,
       outputDir: (values.out as string | undefined) ?? defaults.outputDir,
+      pacingMs,
     },
   };
 }
@@ -147,6 +172,8 @@ export interface DryRunPlan {
   outputDestination: string;
   gitCommit: string;
   gitDirty: boolean;
+  /** Configured pacing, reported without ever sleeping — a dry-run previews the setting, it never waits (Phase 8C-B §11). */
+  pacingMs: number;
 }
 
 /**
@@ -204,5 +231,6 @@ export function planDryRun(
     outputDestination: config.outputDir,
     gitCommit: git.commit,
     gitDirty: git.dirty,
+    pacingMs: config.pacingMs,
   };
 }

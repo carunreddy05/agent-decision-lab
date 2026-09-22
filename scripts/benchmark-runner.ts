@@ -14,6 +14,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { hashDataset } from "@/benchmark/hash";
 import { loadDataset } from "@/benchmark/load-dataset";
 import { runClaudeOnlyCase, runHybridCase, runJevOnlyCase, type CaseRunnerContext } from "@/benchmark/case-runner";
@@ -42,6 +43,34 @@ function selectCases(dataset: BenchmarkDataset, limit: number | undefined): Benc
   return limit !== undefined ? dataset.cases.slice(0, limit) : dataset.cases;
 }
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fixed, non-adaptive pacing (Phase 8C-B) — lives here, in the outer
+ * orchestration loop, never inside a provider adapter or `case-runner.ts`.
+ * Waits exactly `pacingMs` before every case except the first; the wait
+ * never depends on the previous case's latency, HTTP status, confidence,
+ * correctness, or success/failure — a prior 429 changes nothing about the
+ * next wait. `pacingMs: 0` (the default) waits nothing, preserving the
+ * exact prior sequential behavior byte-for-byte.
+ */
+export async function runPaced<T>(
+  cases: readonly BenchmarkCase[],
+  pacingMs: number,
+  run: (benchCase: BenchmarkCase) => Promise<T>,
+): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < cases.length; i++) {
+    if (i > 0 && pacingMs > 0) {
+      await sleep(pacingMs);
+    }
+    results.push(await run(cases[i]));
+  }
+  return results;
+}
+
 function printDryRunPlan(config: CliConfig, dataset: BenchmarkDataset): void {
   const datasetHash = hashDataset(dataset);
   const plan = planDryRun(config, dataset, datasetHash, { commit: getGitCommit(), dirty: isGitDirty() });
@@ -63,18 +92,20 @@ async function runProviderStrategy(config: CliConfig, dataset: BenchmarkDataset)
     routingSpecVersion: ROUTING_SPEC_VERSION,
   };
 
-  const results: CaseResult[] = [];
+  let results: CaseResult[];
   if (config.strategy === "jev") {
     const provider = new JevRouterProvider();
-    for (const benchCase of cases) results.push(await runJevOnlyCase(benchCase, provider, ctx));
+    results = await runPaced(cases, config.pacingMs, (benchCase) => runJevOnlyCase(benchCase, provider, ctx));
   } else if (config.strategy === "claude") {
     const provider = new ClaudeRouterProvider();
-    for (const benchCase of cases) results.push(await runClaudeOnlyCase(benchCase, provider, ctx));
+    results = await runPaced(cases, config.pacingMs, (benchCase) => runClaudeOnlyCase(benchCase, provider, ctx));
   } else {
     const jevProvider = new JevRouterProvider();
     const claudeProvider = new ClaudeRouterProvider();
     const threshold = config.threshold ?? 0.8;
-    for (const benchCase of cases) results.push(await runHybridCase(benchCase, jevProvider, claudeProvider, threshold, ctx));
+    results = await runPaced(cases, config.pacingMs, (benchCase) =>
+      runHybridCase(benchCase, jevProvider, claudeProvider, threshold, ctx),
+    );
   }
 
   const manifest = buildManifest({
@@ -88,6 +119,7 @@ async function runProviderStrategy(config: CliConfig, dataset: BenchmarkDataset)
     actualCaseCount: cases.length,
     fullDataset: config.limit === undefined,
     dryRun: false,
+    pacingMs: config.pacingMs,
   });
 
   const runDir = path.join(config.outputDir, runId);
@@ -230,4 +262,12 @@ async function main() {
   await runProviderStrategy(config, dataset);
 }
 
-main();
+// Standard ESM entry-point guard (Phase 8C-B) — runs `main()` only when
+// this file is executed directly (`tsx scripts/benchmark-runner.ts ...`),
+// never when a test imports `runPaced`/`sleep` for deterministic pacing
+// tests. Without this guard, merely importing this module for its
+// exported helpers would also invoke `main()` and touch `process.argv`/
+// `process.exitCode` as a side effect of import.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
