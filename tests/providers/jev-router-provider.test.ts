@@ -12,7 +12,7 @@ import {
 import { ROUTES, type Route } from "@/domain/route";
 import { evaluatePolicy } from "@/policy/policy-engine";
 import { JevRouterProvider } from "@/providers/jev/jev-router-provider";
-import { ROUTING_SPEC_VERSION } from "@/providers/jev/routing-spec";
+import { ROUTING_SPEC_VERSION } from "@/providers/routing-spec";
 import { deriveAction } from "@/pipeline/derive-action";
 
 /** Builds a `/v1/evaluate`-shaped response — see the wire-format reconciliation. */

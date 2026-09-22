@@ -71,8 +71,12 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   runner (Phase 7+) must be a standalone script outside the Next.js app process, and
   any real-provider run needs an explicit non-default flag plus your prior approval.
 - **Minimal dependencies.** No Kubernetes/Kafka/Redis/DB/LangChain/agent frameworks.
-  Currently: Next.js, React, TypeScript, Tailwind, vitest, tsx. No zod — provider
-  output is validated with hand-rolled type guards (`src/domain/validate.ts`).
+  Currently: Next.js, React, TypeScript, Tailwind, vitest, tsx, plus each
+  provider's own official first-party SDK where one exists (`@anthropic-ai/sdk`
+  for Claude; Jev uses native `fetch` instead, since it's a thin JSON contract
+  over Vercel's Gateway, not a case of avoiding official SDKs on principle).
+  No zod — provider output is validated with hand-rolled type guards
+  (`src/domain/validate.ts`).
 - Work one phase at a time; checkpoint (tests + typecheck + lint, and build for UI
   phases) before moving on. Don't commit a phase's work until it's been reviewed,
   unless told otherwise.
@@ -116,10 +120,23 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   *successful* response with a malformed body) were added, and
   `ProviderTimeoutError` gained a `client`/`upstream` origin. The 100-case
   benchmark itself has **not** run yet — that's a separate approval gate.
-- **Phase 5+** (Claude integration, hybrid escalation, benchmark runner, real
-  benchmark run, dashboard, reports, ADRs) — not started. Do not integrate
-  Claude or run the 100-case benchmark until explicitly instructed — each
-  has its own approval gate.
+- **Phase 5** (Claude baseline integration) — research approved
+  (`benchmark/reports/phase5-claude-research.md`); `ClaudeRouterProvider`
+  implemented behind `RouterProvider` via the Messages API, model
+  `claude-sonnet-5`, forced tool use (`select_route`, `strict: true`), with
+  mocked tests passing. Deliberately reports **no confidence/probabilities**
+  — nothing asks Claude to self-report certainty, and `RoutingDecision`
+  already supports both fields being `undefined`. Thinking explicitly
+  disabled; no temperature/top_p/top_k; `maxRetries: 0`. Reuses the Phase 4
+  error taxonomy unchanged (no Claude-specific error types).
+  `routing-spec.ts` moved from `src/providers/jev/` to `src/providers/` —
+  Claude and Jev now share the exact same spec source, not two copies.
+  **No real Claude API call has been made yet** — that requires a separate
+  approval for the first live smoke test, same gate as Jev's Phase 4.
+- **Phase 6+** (hybrid escalation, benchmark runner, real benchmark run,
+  dashboard, reports, ADRs) — not started. Do not implement Hybrid, run the
+  100-case benchmark, or make a real Claude API call until explicitly
+  instructed — each has its own approval gate.
 
 ## Key files
 
@@ -138,12 +155,18 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   `RoutingDecision` carries `routingSpecVersion` and
   `UsageMetadata.providerReportedCostUsd` (kept separate from our own
   `estimatedCostUsd`) — both added Phase 4, both generic (not Jev-specific).
-- `src/providers/` — `RouterProvider` interface; `mock/mock-provider.ts` (deterministic
-  keyword heuristic, never counted in real benchmark numbers); `jev/` (Jev via Vercel
-  AI Gateway — `config.ts`, `routing-spec.ts` (`routing-spec-v1`, frozen once used
-  for a real run), `jev-types.ts` (wire types, never imported outside this folder),
-  `jev-client.ts` (fetch + timeout + HTTP error mapping, no retries), and
-  `jev-router-provider.ts` (normalizes into `RoutingDecision`)).
+- `src/providers/` — `RouterProvider` interface; `routing-spec.ts`
+  (`routing-spec-v1`, frozen once used for a real run — shared by every
+  real provider, moved here from `jev/` in Phase 5 so Jev and Claude use
+  exactly one spec, not two copies); `mock/mock-provider.ts` (deterministic
+  keyword heuristic, never counted in real benchmark numbers); `jev/` (Jev
+  via Vercel AI Gateway — `config.ts`, `jev-types.ts` (wire types, never
+  imported outside this folder), `jev-client.ts` (fetch + timeout + HTTP
+  error mapping, no retries), `jev-router-provider.ts`); `claude/` (Claude
+  via the Messages API — `config.ts`, `claude-router-provider.ts`: uses the
+  official `@anthropic-ai/sdk` directly rather than raw types, since
+  Anthropic's typed exceptions and `Anthropic.Message`/`Anthropic.Tool`
+  types are used as-is per the SDK's own convention).
 - `src/policy/` — `policy-rules.ts` (the ALLOW/REQUIRE_REVIEW/DENY table),
   `policy-engine.ts`.
 - `src/pipeline/` — `derive-action.ts`, `execute-action.ts`, `run-decision.ts` (the
@@ -151,7 +174,8 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
 - `src/tools/` — deterministic mock `docs`/`github`/`jira` tools over fixtures in
   `src/tools/fixtures/`.
 - `benchmark/` — `datasets/routing-v1.0.json` (locked ground truth),
-  `reports/` (`phase3-review.md`, `phase4-jev-research.md`).
+  `reports/` (`phase3-review.md`, `phase4-jev-research.md`,
+  `phase5-claude-research.md`).
 - `app/api/decide/route.ts` — the server boundary; the only caller of `runDecision`.
   Accepts a `provider` name (`"mock"` | `"jev"`) and resolves it to a
   `RouterProvider` server-side — the client only ever sends a name, never a key.

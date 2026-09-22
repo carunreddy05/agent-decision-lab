@@ -36,8 +36,10 @@ export function ResultView({ trace }: { trace: Trace }) {
           </span>
         </div>
         <Field label="Route" value={ROUTE_LABELS[final.route]} />
-        {final.confidence !== undefined && (
+        {final.confidence !== undefined ? (
           <Field label="Decision confidence" value={`${Math.round(final.confidence * 100)}%`} />
+        ) : (
+          <Field label="Decision confidence" value="Not available for this provider" />
         )}
         <Field label="Latency (client-measured)" value={`${final.latencyMs} ms`} />
         {final.usage?.inputTokens !== undefined && (
@@ -55,10 +57,14 @@ export function ResultView({ trace }: { trace: Trace }) {
             CLAUDE.md for the calibration caveat.
           </p>
         )}
-        {final.probabilities && (
+        {final.probabilities ? (
           <div className="mt-3">
             <ProbabilityBars probabilities={final.probabilities} />
           </div>
+        ) : (
+          <p className="mt-3 text-xs text-neutral-400 dark:text-neutral-500">
+            No per-route probabilities available for this provider.
+          </p>
         )}
       </Panel>
 

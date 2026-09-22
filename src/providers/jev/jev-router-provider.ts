@@ -11,7 +11,7 @@ import {
 } from "./config";
 import { callJevEvaluate } from "./jev-client";
 import { isJevChoiceAnswer } from "./jev-types";
-import { ROUTE_CRITERIA, ROUTING_INSTRUCTIONS, ROUTING_SPEC_VERSION } from "./routing-spec";
+import { ROUTE_CRITERIA, ROUTING_INSTRUCTIONS, ROUTING_SPEC_VERSION } from "../routing-spec";
 
 const ROUTE_QUESTION_KEY = "route";
 

@@ -10,10 +10,11 @@ import {
   ProviderUnavailableError,
 } from "@/domain/errors";
 import { DEFAULT_CONFIDENCE_THRESHOLD, runDecision } from "@/pipeline/run-decision";
+import { ClaudeRouterProvider } from "@/providers/claude/claude-router-provider";
 import { JevRouterProvider } from "@/providers/jev/jev-router-provider";
 import type { RouterProvider } from "@/providers/router-provider";
 
-const PROVIDER_NAMES = ["mock", "jev"] as const;
+const PROVIDER_NAMES = ["mock", "jev", "claude"] as const;
 type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 function isProviderName(value: unknown): value is ProviderName {
@@ -22,13 +23,15 @@ function isProviderName(value: unknown): value is ProviderName {
 
 /** `undefined` means "use runDecision's own default" (the mock provider). */
 function resolveProvider(name: ProviderName): RouterProvider | undefined {
-  return name === "jev" ? new JevRouterProvider() : undefined;
+  if (name === "jev") return new JevRouterProvider();
+  if (name === "claude") return new ClaudeRouterProvider();
+  return undefined;
 }
 
 /**
  * The server boundary for the decision pipeline. This is a plain Next.js
- * Route Handler — the smallest mechanism that keeps provider calls (Phase 4:
- * Jev via Vercel AI Gateway; Phase 5: Claude) entirely server-side. The
+ * Route Handler — the smallest mechanism that keeps provider calls (Jev via
+ * Vercel AI Gateway; Claude via the Messages API) entirely server-side. The
  * client never imports the pipeline or a provider directly, and never sees
  * an API key — it only ever sends a `provider` name.
  */

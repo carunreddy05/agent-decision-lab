@@ -15,13 +15,15 @@ const EXAMPLE_PROMPTS = [
 
 const PROVIDER_OPTIONS = [
   { value: "mock" as const, label: "Mock Router", note: "deterministic keyword heuristic — simulation only" },
-  { value: "jev" as const, label: "Jev (jev-1.13.0)", note: "real provider, via Vercel AI Gateway" },
+  { value: "jev" as const, label: "Jev (typesafe-ai/jev)", note: "real provider, via Vercel AI Gateway" },
+  {
+    value: "claude" as const,
+    label: "Claude (claude-sonnet-5)",
+    note: "real provider, general-purpose LLM baseline — no confidence signal by design",
+  },
 ];
 
-const FUTURE_MODES = [
-  { label: "Claude", note: "coming in Phase 5" },
-  { label: "Hybrid", note: "coming in Phase 6" },
-];
+const FUTURE_MODES = [{ label: "Hybrid", note: "coming in Phase 6" }];
 
 const DEFAULT_THRESHOLD = 0.8;
 
@@ -84,8 +86,10 @@ export default function Home() {
               <strong className="text-neutral-700 dark:text-neutral-300">
                 Software stays in control.
               </strong>{" "}
-              This is the architecture being tested. Jev is wired up as a real provider (Vercel AI
-              Gateway, model jev-1.13.0); Claude is not wired up yet.
+              This is the architecture being tested. Jev (Vercel AI Gateway, typesafe-ai/jev) and
+              Claude (claude-sonnet-5) are both wired up as independent, real providers below —
+              Claude is a general-purpose baseline and, by design, reports no confidence signal.
+              The Hybrid escalation path (Jev → threshold → Claude) is not built yet.
             </p>
             <p>
               <strong className="text-neutral-700 dark:text-neutral-300">Decision:</strong> a
