@@ -1,7 +1,19 @@
-import type { Trace } from "@/domain/trace";
+import type { EscalationReason, Trace } from "@/domain/trace";
 import { ROUTE_LABELS } from "../route-visuals";
 import { PolicyBadge } from "./PolicyBadge";
 import { ProbabilityBars } from "./ProbabilityBars";
+
+/**
+ * MISSING_CONFIDENCE_FALLBACK is deliberately labeled distinctly from
+ * ordinary low confidence — it's a strategy-level inability to evaluate the
+ * decision at all, not a measured low score. See EscalationReason's doc
+ * comment in src/domain/trace.ts.
+ */
+const FALLBACK_REASON_LABELS: Partial<Record<EscalationReason, string>> = {
+  UNCERTAINTY_FALLBACK: "Low confidence",
+  MISSING_CONFIDENCE_FALLBACK: "Missing confidence fallback",
+  TECHNICAL_FAILURE_FALLBACK: "Technical failure fallback",
+};
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -26,6 +38,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 export function ResultView({ trace }: { trace: Trace }) {
   const { decision, escalation, policy, execution } = trace;
   const final = decision.final;
+  const isHybrid = trace.strategy === "HYBRID";
 
   return (
     <div className="space-y-4">
@@ -69,11 +82,43 @@ export function ResultView({ trace }: { trace: Trace }) {
       </Panel>
 
       <Panel title="Escalation">
-        <Field
-          label="Would escalate"
-          value={escalation.reason === "UNCERTAINTY_FALLBACK" ? "Yes — WOULD ESCALATE" : "Not required"}
-        />
-        {escalation.threshold !== undefined && (
+        {isHybrid ? (
+          <>
+            <Field
+              label="Fallback"
+              value={escalation.triggered ? `Yes — ${FALLBACK_REASON_LABELS[escalation.reason] ?? escalation.reason}` : "No fallback"}
+            />
+            {escalation.threshold !== undefined && (
+              <Field label="Threshold" value={`${Math.round(escalation.threshold * 100)}%`} />
+            )}
+            {decision.jev && (
+              <>
+                <Field label="Jev initial route" value={ROUTE_LABELS[decision.jev.route]} />
+                <Field
+                  label="Jev confidence"
+                  value={
+                    decision.jev.confidence !== undefined
+                      ? `${Math.round(decision.jev.confidence * 100)}%`
+                      : "Missing"
+                  }
+                />
+              </>
+            )}
+            {decision.claudeFallback && (
+              <Field label="Claude fallback route" value={ROUTE_LABELS[decision.claudeFallback.route]} />
+            )}
+            <Field label="Final provider" value={final.provider} />
+            {trace.hybridMeta && (
+              <Field label="Total Hybrid latency" value={`${trace.hybridMeta.totalLatencyMs} ms`} />
+            )}
+          </>
+        ) : (
+          <Field
+            label="Would escalate"
+            value={escalation.reason === "UNCERTAINTY_FALLBACK" ? "Yes — WOULD ESCALATE" : "Not required"}
+          />
+        )}
+        {!isHybrid && escalation.threshold !== undefined && (
           <Field label="Threshold" value={`${Math.round(escalation.threshold * 100)}%`} />
         )}
         {escalation.detail && (

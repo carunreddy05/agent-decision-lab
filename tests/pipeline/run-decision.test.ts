@@ -6,8 +6,10 @@ import type { RouterProvider } from "@/providers/router-provider";
 
 /** A RouterProvider stub that returns a fixed decision, for deterministic pipeline tests. */
 class FixedRouterProvider implements RouterProvider {
-  readonly name = "fixture";
-  constructor(private readonly decision: RoutingDecision) {}
+  constructor(
+    private readonly decision: RoutingDecision,
+    public readonly name: string = "fixture",
+  ) {}
   async decide(): Promise<RoutingDecision> {
     return this.decision;
   }
@@ -120,5 +122,80 @@ describe("runDecision", () => {
     await expect(runDecision("anything", { provider })).rejects.toThrow(
       InvalidProviderOutputError,
     );
+  });
+
+  describe("strategy labeling (Phase 6 bug fix — was hardcoded 'MOCK' regardless of provider)", () => {
+    it("labels MOCK when using the default provider", async () => {
+      const trace = await runDecision("What's a good name for a cat?");
+      expect(trace.strategy).toBe("MOCK");
+    });
+
+    it("labels JEV_ONLY for a provider named 'jev'", async () => {
+      const provider = new FixedRouterProvider(fixedDecision({ provider: "jev" }), "jev");
+      const trace = await runDecision("anything", { provider });
+      expect(trace.strategy).toBe("JEV_ONLY");
+    });
+
+    it("labels CLAUDE_ONLY for a provider named 'claude'", async () => {
+      const provider = new FixedRouterProvider(
+        fixedDecision({ provider: "claude", confidence: undefined }),
+        "claude",
+      );
+      const trace = await runDecision("anything", { provider });
+      expect(trace.strategy).toBe("CLAUDE_ONLY");
+    });
+
+    it("labels HYBRID when using the Hybrid strategy", async () => {
+      const jev = new FixedRouterProvider(fixedDecision({ provider: "jev", confidence: 0.95 }), "jev");
+      const claude = new FixedRouterProvider(
+        fixedDecision({ provider: "claude", confidence: undefined }),
+        "claude",
+      );
+      const trace = await runDecision("anything", { hybrid: { jevProvider: jev, claudeProvider: claude } });
+      expect(trace.strategy).toBe("HYBRID");
+    });
+  });
+
+  describe("Hybrid routing through the full pipeline", () => {
+    it("Hybrid's final decision still goes through deterministic policy — no bypass", async () => {
+      const jev = new FixedRouterProvider(
+        fixedDecision({ provider: "jev", route: "JIRA", confidence: 0.4 }),
+        "jev",
+      );
+      const claude = new FixedRouterProvider(
+        fixedDecision({ provider: "claude", route: "JIRA", confidence: undefined }),
+        "claude",
+      );
+
+      const trace = await runDecision("Create a Jira issue for this timeout problem.", {
+        hybrid: { jevProvider: jev, claudeProvider: claude, confidenceThreshold: 0.8 },
+      });
+
+      expect(trace.strategy).toBe("HYBRID");
+      expect(trace.escalation.triggered).toBe(true);
+      expect(trace.decision.final.provider).toBe("claude");
+      expect(trace.action).toBe("CREATE_JIRA");
+      expect(trace.policy?.result).toBe("REQUIRE_REVIEW");
+      expect(trace.execution?.status).toBe("skipped");
+    });
+
+    it("preserves Jev's initial decision in the trace even though Claude's decision is final", async () => {
+      const jev = new FixedRouterProvider(
+        fixedDecision({ provider: "jev", route: "JIRA", confidence: 0.4 }),
+        "jev",
+      );
+      const claude = new FixedRouterProvider(
+        fixedDecision({ provider: "claude", route: "GITHUB", confidence: undefined }),
+        "claude",
+      );
+
+      const trace = await runDecision("anything", {
+        hybrid: { jevProvider: jev, claudeProvider: claude, confidenceThreshold: 0.8 },
+      });
+
+      expect(trace.decision.jev?.route).toBe("JIRA");
+      expect(trace.decision.claudeFallback?.route).toBe("GITHUB");
+      expect(trace.decision.final.route).toBe("GITHUB");
+    });
   });
 });

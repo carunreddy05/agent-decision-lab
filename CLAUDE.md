@@ -131,12 +131,41 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   error taxonomy unchanged (no Claude-specific error types).
   `routing-spec.ts` moved from `src/providers/jev/` to `src/providers/` —
   Claude and Jev now share the exact same spec source, not two copies.
-  **No real Claude API call has been made yet** — that requires a separate
-  approval for the first live smoke test, same gate as Jev's Phase 4.
-- **Phase 6+** (hybrid escalation, benchmark runner, real benchmark run,
-  dashboard, reports, ADRs) — not started. Do not implement Hybrid, run the
-  100-case benchmark, or make a real Claude API call until explicitly
-  instructed — each has its own approval gate.
+  **Phase 5 is done and closed**: three live smoke-test requests were made
+  (not a benchmark — see `benchmark/reports/phase5-claude-research.md`'s
+  "Live smoke-test record"). The first two diagnosed and fixed a real gap
+  (no safe failure diagnostics existed yet, then a workspace-scoping
+  account issue once they did — an account fix, not a code defect); the
+  third succeeded end-to-end with the real Messages API response matching
+  every mocked assumption exactly.
+- **Phase 6** (Hybrid routing) — implemented: `decideHybrid()`
+  (`src/strategy/hybrid-routing-strategy.ts`) composes the two independent,
+  already-verified providers — Jev first, Claude only on a genuine fallback
+  trigger, always given the raw original prompt with no hint of Jev's
+  route/confidence. Three fallback reasons are tracked distinctly:
+  `UNCERTAINTY_FALLBACK` (confidence below threshold),
+  `MISSING_CONFIDENCE_FALLBACK` (Jev succeeded but reported no confidence —
+  never treated as 0, never conflated with genuine uncertainty), and
+  `TECHNICAL_FAILURE_FALLBACK` (Jev threw `ProviderTimeoutError`/
+  `ProviderRateLimitError`/`ProviderUnavailableError` specifically — the
+  other Provider* errors and `InvalidProviderOutputError` fail fast, on
+  purpose: an account/config/contract problem must not silently make
+  Hybrid look like a healthy Claude-only run). If Claude then fails too,
+  `HybridFallbackFailedError` fails the whole request rather than
+  resurrecting Jev's already-distrusted decision. Also fixed: `Trace.strategy`
+  was hardcoded to `"MOCK"` regardless of which provider actually ran since
+  Phase 4 — now correctly reports `JEV_ONLY`/`CLAUDE_ONLY`/`HYBRID`.
+  **Mocked tests only — no live Hybrid request has been made yet**, same
+  approval gate as every other first live call so far.
+- **Phase 7+** (benchmark runner, real 100-case benchmark run, dashboard,
+  reports, ADRs) — not started. Do not run the 100-case benchmark or make a
+  real Hybrid API call until explicitly instructed — each has its own
+  approval gate. See CLAUDE.md's fairness guardrails and
+  `phase6-hybrid-design.md` §"Fairness risks" before reporting any Hybrid
+  benchmark number in isolation — Hybrid is a two-model strategy, not a
+  third equivalent model, and later reporting must break out final
+  accuracy, fallback rate (by reason), Jev-only resolution rate, Claude
+  call count, cost, and latency separately, never just "Hybrid accuracy."
 
 ## Key files
 
@@ -150,11 +179,23 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   not permitted), `ProviderBillingError` (402), `ProviderRequestError`
   (400/404/409/422 — the provider rejected *our request*, never reaching
   model evaluation; kept separate from `InvalidProviderOutputError` on
-  purpose), `ProviderRateLimitError` (429). See `errors.ts` doc comments for
-  why each is distinct and what a caller should do differently for each.
+  purpose), `ProviderRateLimitError` (429), and (Phase 6)
+  `HybridFallbackFailedError` — thrown only by the Hybrid strategy when
+  Claude fails after Jev was already deemed untrustworthy; flat and minimal
+  by design (route/confidence/error-category strings only, never a raw
+  provider response). See `errors.ts` doc comments for why each is distinct
+  and what a caller should do differently for each.
   `RoutingDecision` carries `routingSpecVersion` and
   `UsageMetadata.providerReportedCostUsd` (kept separate from our own
   `estimatedCostUsd`) — both added Phase 4, both generic (not Jev-specific).
+  `trace.ts`'s `EscalationReason` gained `MISSING_CONFIDENCE_FALLBACK`
+  (Phase 6, distinct from `UNCERTAINTY_FALLBACK` — see its doc comment for
+  why), and `Trace` gained an optional `hybridMeta` (only the handful of
+  things with no natural home on a `RoutingDecision`: Jev's error category
+  and attempt latency when it produced no decision, total Hybrid latency,
+  and aggregate estimated cost — everything else reuses the existing
+  `decision.jev`/`decision.claudeFallback`/`decision.final` slots, which
+  were already anticipated in Phase 1).
 - `src/providers/` — `RouterProvider` interface; `routing-spec.ts`
   (`routing-spec-v1`, frozen once used for a real run — shared by every
   real provider, moved here from `jev/` in Phase 5 so Jev and Claude use
@@ -167,15 +208,24 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
   official `@anthropic-ai/sdk` directly rather than raw types, since
   Anthropic's typed exceptions and `Anthropic.Message`/`Anthropic.Tool`
   types are used as-is per the SDK's own convention).
+- `src/strategy/` — `hybrid-routing-strategy.ts` (Phase 6): the
+  `decideHybrid()` function, `DEFAULT_CONFIDENCE_THRESHOLD` (threshold is
+  Hybrid-strategy configuration, not a provider property — re-exported from
+  `run-decision.ts` for the existing single-provider display path). Only
+  composes `RouterProvider`s via their public interface; never reaches into
+  Jev/Claude internals, and neither provider knows it's sometimes called
+  from here.
 - `src/policy/` — `policy-rules.ts` (the ALLOW/REQUIRE_REVIEW/DENY table),
   `policy-engine.ts`.
 - `src/pipeline/` — `derive-action.ts`, `execute-action.ts`, `run-decision.ts` (the
-  orchestrator: the only place decision → policy → execution are wired together).
+  orchestrator: the only place decision → policy → execution are wired together;
+  branches to `decideHybrid()` when `options.hybrid` is set, otherwise calls a
+  single `RouterProvider` as before).
 - `src/tools/` — deterministic mock `docs`/`github`/`jira` tools over fixtures in
   `src/tools/fixtures/`.
 - `benchmark/` — `datasets/routing-v1.0.json` (locked ground truth),
   `reports/` (`phase3-review.md`, `phase4-jev-research.md`,
-  `phase5-claude-research.md`).
+  `phase5-claude-research.md`, `phase6-hybrid-design.md`).
 - `app/api/decide/route.ts` — the server boundary; the only caller of `runDecision`.
   Accepts a `provider` name (`"mock"` | `"jev"`) and resolves it to a
   `RouterProvider` server-side — the client only ever sends a name, never a key.

@@ -21,9 +21,12 @@ const PROVIDER_OPTIONS = [
     label: "Claude (claude-sonnet-5)",
     note: "real provider, general-purpose LLM baseline — no confidence signal by design",
   },
+  {
+    value: "hybrid" as const,
+    label: "Hybrid (Jev → Claude)",
+    note: "Jev first; falls back to Claude below the confidence threshold, on missing confidence, or on a transient Jev failure",
+  },
 ];
-
-const FUTURE_MODES = [{ label: "Hybrid", note: "coming in Phase 6" }];
 
 const DEFAULT_THRESHOLD = 0.8;
 
@@ -89,7 +92,9 @@ export default function Home() {
               This is the architecture being tested. Jev (Vercel AI Gateway, typesafe-ai/jev) and
               Claude (claude-sonnet-5) are both wired up as independent, real providers below —
               Claude is a general-purpose baseline and, by design, reports no confidence signal.
-              The Hybrid escalation path (Jev → threshold → Claude) is not built yet.
+              Hybrid calls Jev first and only calls Claude when Jev&apos;s confidence is below
+              threshold, missing, or when Jev fails with a transient error — Claude never sees
+              Jev&apos;s route or confidence, and independently solves the same routing problem.
             </p>
             <p>
               <strong className="text-neutral-700 dark:text-neutral-300">Decision:</strong> a
@@ -125,15 +130,6 @@ export default function Home() {
             >
               {option.label}
             </button>
-          ))}
-          {FUTURE_MODES.map((mode) => (
-            <span
-              key={mode.label}
-              className="rounded-full border border-dashed border-neutral-300 px-3 py-1 text-xs text-neutral-400 dark:border-neutral-700 dark:text-neutral-600"
-              title={mode.note}
-            >
-              {mode.label} — {mode.note}
-            </span>
           ))}
         </div>
 

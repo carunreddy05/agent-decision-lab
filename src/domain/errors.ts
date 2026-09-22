@@ -165,3 +165,34 @@ export class ProviderRateLimitError extends Error {
     this.name = "ProviderRateLimitError";
   }
 }
+
+/**
+ * Thrown by the Hybrid strategy (Phase 6) when Claude fails after Jev's
+ * decision was already deemed not trustworthy enough to use on its own
+ * (uncertain, missing a confidence signal, or technically failed). Once
+ * that call has been made, the original Jev decision must never be
+ * silently resurrected as if it were final — the whole Hybrid request
+ * fails instead, exactly like a plain single-provider technical failure
+ * (thrown, not folded into a fabricated trace).
+ *
+ * Deliberately minimal and flat: only safe, structured identifiers, never
+ * a raw provider response, header, API key, prompt, or nested error object
+ * (`cause` on the other Provider* errors holds that; this type doesn't).
+ * `initialErrorCategory`/`claudeErrorCategory` are class-name strings
+ * (e.g. "ProviderTimeoutError"), the same shape already used for safe
+ * diagnostic logging in the Jev/Claude adapters.
+ */
+export class HybridFallbackFailedError extends Error {
+  constructor(
+    public readonly fallbackReason: "UNCERTAINTY_FALLBACK" | "MISSING_CONFIDENCE_FALLBACK" | "TECHNICAL_FAILURE_FALLBACK",
+    public readonly initialRoute: string | undefined,
+    public readonly initialConfidence: number | undefined,
+    public readonly initialErrorCategory: string | undefined,
+    public readonly claudeErrorCategory: string,
+  ) {
+    super(
+      `Hybrid fallback failed: Claude call after ${fallbackReason} also failed (${claudeErrorCategory}).`,
+    );
+    this.name = "HybridFallbackFailedError";
+  }
+}

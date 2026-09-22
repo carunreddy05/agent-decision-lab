@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  HybridFallbackFailedError,
   InvalidProviderOutputError,
   ProviderAuthenticationError,
   ProviderAuthorizationError,
@@ -14,15 +15,15 @@ import { ClaudeRouterProvider } from "@/providers/claude/claude-router-provider"
 import { JevRouterProvider } from "@/providers/jev/jev-router-provider";
 import type { RouterProvider } from "@/providers/router-provider";
 
-const PROVIDER_NAMES = ["mock", "jev", "claude"] as const;
+const PROVIDER_NAMES = ["mock", "jev", "claude", "hybrid"] as const;
 type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 function isProviderName(value: unknown): value is ProviderName {
   return typeof value === "string" && (PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
-/** `undefined` means "use runDecision's own default" (the mock provider). */
-function resolveProvider(name: ProviderName): RouterProvider | undefined {
+/** `undefined` means "use runDecision's own default" (the mock provider). Hybrid is handled separately, not as a single RouterProvider. */
+function resolveProvider(name: Exclude<ProviderName, "hybrid">): RouterProvider | undefined {
   if (name === "jev") return new JevRouterProvider();
   if (name === "claude") return new ClaudeRouterProvider();
   return undefined;
@@ -61,12 +62,18 @@ export async function POST(request: Request) {
     typeof confidenceThreshold === "number" ? confidenceThreshold : DEFAULT_CONFIDENCE_THRESHOLD;
 
   try {
-    const trace = await runDecision(prompt, {
-      confidenceThreshold: threshold,
-      provider: resolveProvider(provider ?? "mock"),
-    });
+    const trace =
+      provider === "hybrid"
+        ? await runDecision(prompt, { confidenceThreshold: threshold, hybrid: true })
+        : await runDecision(prompt, {
+            confidenceThreshold: threshold,
+            provider: resolveProvider((provider as Exclude<ProviderName, "hybrid">) ?? "mock"),
+          });
     return NextResponse.json(trace);
   } catch (error) {
+    if (error instanceof HybridFallbackFailedError) {
+      return NextResponse.json({ error: `Technical failure: ${error.message}` }, { status: 502 });
+    }
     if (
       error instanceof InvalidProviderOutputError ||
       error instanceof ProviderTimeoutError ||

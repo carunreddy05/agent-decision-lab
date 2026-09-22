@@ -1,18 +1,25 @@
 import { assertValidRoutingDecision } from "@/domain/validate";
 import type { RoutingDecision } from "@/domain/route";
-import type { EscalationInfo, Trace } from "@/domain/trace";
+import type { EscalationInfo, HybridMeta, Strategy, Trace } from "@/domain/trace";
 import { evaluatePolicy } from "@/policy/policy-engine";
 import { MockRouterProvider } from "@/providers/mock/mock-provider";
 import type { RouterProvider } from "@/providers/router-provider";
+import { decideHybrid, DEFAULT_CONFIDENCE_THRESHOLD, type HybridRoutingOptions } from "@/strategy/hybrid-routing-strategy";
 import { deriveAction } from "./derive-action";
 import { executeAllowedAction, TOOL_NAMES } from "./execute-action";
 
-export const DEFAULT_CONFIDENCE_THRESHOLD = 0.8;
+export { DEFAULT_CONFIDENCE_THRESHOLD };
 
 export interface RunDecisionOptions {
-  /** Injectable for tests and for future provider swaps; defaults to the mock provider. */
+  /** Injectable for tests and for future provider swaps; defaults to the mock provider. Ignored when `hybrid` is set. */
   provider?: RouterProvider;
   confidenceThreshold?: number;
+  /**
+   * Opt into the Hybrid strategy (Jev first, Claude on fallback) instead of
+   * a single provider. `true` uses real Jev/Claude providers; pass an
+   * object to inject stub providers for tests.
+   */
+  hybrid?: boolean | HybridRoutingOptions;
 }
 
 /**
@@ -21,23 +28,44 @@ export interface RunDecisionOptions {
  * (if ALLOW) -> structured trace. This is the only place these boundaries
  * are wired together — UI components and the API route call this function
  * and render its result; they never talk to a provider, the policy engine,
- * or a tool directly.
+ * a tool, or the Hybrid strategy directly.
  *
  * Throws (does not catch) ProviderTimeoutError / ProviderUnavailableError /
- * InvalidProviderOutputError from the provider layer — those are technical
- * failures, distinct from a low-confidence decision, and the caller (API
- * route) is responsible for turning them into a visible error response
- * rather than a fabricated trace. See ADR-004.
+ * InvalidProviderOutputError / the other Provider* errors, and
+ * HybridFallbackFailedError, from the provider/strategy layer — those are
+ * technical failures, distinct from a low-confidence decision, and the
+ * caller (API route) is responsible for turning them into a visible error
+ * response rather than a fabricated trace. See ADR-004.
  */
 export async function runDecision(prompt: string, options: RunDecisionOptions = {}): Promise<Trace> {
-  const provider = options.provider ?? new MockRouterProvider();
   const threshold = options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
-  const rawDecision = await provider.decide({ prompt });
-  const decision = assertValidRoutingDecision(rawDecision);
+  let strategy: Strategy;
+  let decisionSlice: Trace["decision"];
+  let escalation: EscalationInfo;
+  let hybridMeta: HybridMeta | undefined;
+  let finalDecision: RoutingDecision;
 
-  const escalation = evaluateEscalation(decision, threshold);
-  const derived = deriveAction(decision.route, prompt);
+  if (options.hybrid) {
+    const hybridOptions = typeof options.hybrid === "object" ? options.hybrid : {};
+    const result = await decideHybrid(
+      { prompt },
+      { ...hybridOptions, confidenceThreshold: hybridOptions.confidenceThreshold ?? threshold },
+    );
+    strategy = "HYBRID";
+    finalDecision = result.finalDecision;
+    decisionSlice = { jev: result.initialDecision, claudeFallback: result.claudeDecision, final: finalDecision };
+    escalation = result.escalation;
+    hybridMeta = result.hybridMeta;
+  } else {
+    const provider = options.provider ?? new MockRouterProvider();
+    finalDecision = assertValidRoutingDecision(await provider.decide({ prompt }));
+    strategy = strategyForProvider(provider);
+    decisionSlice = { final: finalDecision };
+    escalation = evaluateEscalation(finalDecision, threshold);
+  }
+
+  const derived = deriveAction(finalDecision.route, prompt);
   const policy = derived.action ? evaluatePolicy(derived.action) : undefined;
 
   const execution = policy
@@ -53,7 +81,7 @@ export async function runDecision(prompt: string, options: RunDecisionOptions = 
         }
     : {
         tool: "none",
-        status: (decision.route === "REJECT" ? "skipped" : "success") as "skipped" | "success",
+        status: (finalDecision.route === "REJECT" ? "skipped" : "success") as "skipped" | "success",
         detail: derived.reason,
       };
 
@@ -61,13 +89,31 @@ export async function runDecision(prompt: string, options: RunDecisionOptions = 
     traceId: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     prompt,
-    strategy: "MOCK",
-    decision: { final: decision },
+    strategy,
+    decision: decisionSlice,
     escalation,
+    ...(hybridMeta ? { hybridMeta } : {}),
     action: derived.action ?? undefined,
     policy,
     execution,
   };
+}
+
+/**
+ * Pre-existing bug fixed in Phase 6: this previously hardcoded "MOCK"
+ * regardless of which provider actually ran, mislabeling every Jev-only and
+ * Claude-only trace since Phase 4/5. Hybrid can't self-report correctly
+ * without this fix, so it's bundled in here rather than left for later.
+ */
+function strategyForProvider(provider: RouterProvider): Strategy {
+  switch (provider.name) {
+    case "jev":
+      return "JEV_ONLY";
+    case "claude":
+      return "CLAUDE_ONLY";
+    default:
+      return "MOCK";
+  }
 }
 
 function evaluateEscalation(decision: RoutingDecision, threshold: number): EscalationInfo {
@@ -86,7 +132,7 @@ function evaluateEscalation(decision: RoutingDecision, threshold: number): Escal
       reason: "UNCERTAINTY_FALLBACK",
       threshold,
       detail:
-        "Below threshold — would escalate to a general-purpose LLM under the hybrid architecture (Phase 6, not implemented yet).",
+        "Below threshold — would escalate to a general-purpose LLM under the hybrid architecture. This run used a single provider directly, so no escalation actually occurred.",
     };
   }
 
