@@ -32,14 +32,29 @@ export function ResultView({ trace }: { trace: Trace }) {
       <Panel title="Decision">
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded border border-neutral-300 px-2 py-0.5 font-mono text-xs text-neutral-500 uppercase dark:border-neutral-700 dark:text-neutral-400">
-            {final.provider} / simulated
+            {final.provider === "mock" ? `${final.provider} / simulated` : `${final.provider} / ${final.model}`}
           </span>
         </div>
         <Field label="Route" value={ROUTE_LABELS[final.route]} />
         {final.confidence !== undefined && (
-          <Field label="Confidence" value={`${Math.round(final.confidence * 100)}%`} />
+          <Field label="Decision confidence" value={`${Math.round(final.confidence * 100)}%`} />
         )}
-        <Field label="Latency" value={`${final.latencyMs} ms`} />
+        <Field label="Latency (client-measured)" value={`${final.latencyMs} ms`} />
+        {final.usage?.inputTokens !== undefined && (
+          <Field
+            label="Usage"
+            value={`${final.usage.inputTokens} in / ${final.usage.outputTokens ?? 0} out tokens`}
+          />
+        )}
+        {final.usage?.providerReportedCostUsd !== undefined && (
+          <Field label="Provider-reported cost" value={`$${final.usage.providerReportedCostUsd.toFixed(6)}`} />
+        )}
+        {final.confidence !== undefined && (
+          <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
+            Provider-reported decision signal, not a measured probability of correctness — see
+            CLAUDE.md for the calibration caveat.
+          </p>
+        )}
         {final.probabilities && (
           <div className="mt-3">
             <ProbabilityBars probabilities={final.probabilities} />

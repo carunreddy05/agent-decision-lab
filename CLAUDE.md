@@ -51,9 +51,17 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
 - **Fairness**: Jev and Claude get the same dataset, ground truth, and semantically
   equivalent instructions. No dataset changes after seeing results except genuine,
   recorded label corrections.
-- **Confidence is not correctness.** Never describe Jev's confidence as calibrated
-  unless calibration is actually measured. Never manufacture a confidence number for
-  Claude just to make the comparison look symmetric.
+- **Confidence is not correctness.** Jev's returned value is documented as a
+  provider-reported decision confidence / choice probability signal, used
+  experimentally as an uncertainty signal — never described as "probability the
+  answer is correct" unless Jev's own documentation explicitly supports that
+  reading (it currently does not; see `benchmark/reports/phase4-jev-research.md`
+  §10-11). Independent evaluation found real, direction-varying miscalibration
+  out of distribution, so the hybrid threshold experiment is tracked as **YES,
+  WITH LIMITATIONS** — the benchmark must measure whether higher reported
+  confidence actually correlates with higher routing accuracy on our locked
+  dataset, not assume it. Never manufacture a confidence number for Claude just
+  to make the comparison look symmetric.
 - **High-confidence wrong answers are the headline failure mode to track**, not just
   average accuracy — preserve the actual cases, don't fold them into an aggregate.
 - **Everything destructive is simulated.** Never build a real destructive tool.
@@ -74,33 +82,86 @@ policy (and gets denied) even if the router itself misroutes or rejects it.
 - **Phase 0** (architecture proposal) — done.
 - **Phase 1** (scaffold, domain model, policy engine, mock tools, tests) — done,
   committed (`feat: establish decision, policy, and mock tool boundaries`).
-- **Phase 2** (interactive UI wired to the mock pipeline) — built, verified (tests/
-  typecheck/lint/build all pass, manually exercised via dev server), **not yet
-  committed** — pending your review of the checkpoint.
-- **Phase 3+** (benchmark dataset, Jev integration, Claude integration, hybrid
-  escalation, benchmark runner, real benchmark run, dashboard, reports, ADRs) — not
-  started. Do not integrate Jev or Claude, run paid APIs, or generate the benchmark
-  dataset until explicitly instructed — each of those has its own approval gate.
+- **Phase 2** (interactive UI wired to the mock pipeline) — done, committed
+  (`feat: add interactive decision and policy pipeline`).
+- **Phase 3** (benchmark dataset + ground truth) — done, committed
+  (`test: lock v1 routing benchmark dataset`). `routing-v1.0.json` is locked and
+  immutable for the first Jev/Claude comparison — see
+  `benchmark/reports/phase3-review.md` for labeling decisions and
+  `tests/benchmark/dataset.test.ts` for the pinned-hash regression guard.
+- **Phase 4** (Jev integration) — research approved
+  (`benchmark/reports/phase4-jev-research.md`); `JevRouterProvider` implemented
+  behind `RouterProvider` via Vercel AI Gateway's `/v1/evaluate` endpoint, model
+  identifier `typesafe-ai/jev`, with mocked tests passing. **Corrected from the
+  original research/implementation pass**, which had approved the
+  TypeSafe-compatible passthrough (`/typesafe/v1/systemone`) with a pinned
+  `jev-1.13.0` — a follow-up documentation check found Vercel's current
+  guidance explicitly recommends `/v1/evaluate` for new integrations, and that
+  `jev-1.13.0` is undocumented for any Gateway path (only `typesafe-ai/jev`
+  is). See `benchmark/reports/phase4-jev-research.md`'s wire-format
+  reconciliation addendum for the full analysis — this is a corrected
+  implementation detail, not a reversed research conclusion.
+  **Known reproducibility limitation, accepted deliberately**: the Gateway's
+  raw HTTP response does not expose which concrete underlying Jev build
+  answered a request behind the `typesafe-ai/jev` alias; this is recorded as
+  `resolvedModelIdentifier: null` on every decision rather than guessed.
+  **Phase 4 is done and closed**: three live smoke-test requests were made
+  (not a benchmark — see `benchmark/reports/phase4-jev-research.md`'s "Live
+  smoke-test record"), the third succeeded end-to-end with the real
+  `/v1/evaluate` response matching every documented JSON path exactly. The
+  second attempt's HTTP 403 exposed a real error-taxonomy gap, since fixed:
+  `ProviderAuthorizationError` (403), `ProviderBillingError` (402), and
+  `ProviderRequestError` (400/404/409/422 — a rejected *request*, kept
+  distinct from `InvalidProviderOutputError`, which is now reserved for a
+  *successful* response with a malformed body) were added, and
+  `ProviderTimeoutError` gained a `client`/`upstream` origin. The 100-case
+  benchmark itself has **not** run yet — that's a separate approval gate.
+- **Phase 5+** (Claude integration, hybrid escalation, benchmark runner, real
+  benchmark run, dashboard, reports, ADRs) — not started. Do not integrate
+  Claude or run the 100-case benchmark until explicitly instructed — each
+  has its own approval gate.
 
 ## Key files
 
 - `src/domain/` — `Route`, `Action`, `PolicyDecision`, `Trace`, error types, validation.
+  Error taxonomy: `ProviderTimeoutError` (now with a `client`/`upstream`
+  `origin`) / `ProviderUnavailableError` / `InvalidProviderOutputError`
+  (Phase 1, the last now reserved strictly for a *successful* response with
+  a malformed body) plus, added across Phase 4 as real HTTP statuses
+  exposed gaps: `ProviderAuthenticationError` (401),
+  `ProviderAuthorizationError` (403 — distinct from 401: valid credentials,
+  not permitted), `ProviderBillingError` (402), `ProviderRequestError`
+  (400/404/409/422 — the provider rejected *our request*, never reaching
+  model evaluation; kept separate from `InvalidProviderOutputError` on
+  purpose), `ProviderRateLimitError` (429). See `errors.ts` doc comments for
+  why each is distinct and what a caller should do differently for each.
+  `RoutingDecision` carries `routingSpecVersion` and
+  `UsageMetadata.providerReportedCostUsd` (kept separate from our own
+  `estimatedCostUsd`) — both added Phase 4, both generic (not Jev-specific).
 - `src/providers/` — `RouterProvider` interface; `mock/mock-provider.ts` (deterministic
-  keyword heuristic, never counted in real benchmark numbers).
+  keyword heuristic, never counted in real benchmark numbers); `jev/` (Jev via Vercel
+  AI Gateway — `config.ts`, `routing-spec.ts` (`routing-spec-v1`, frozen once used
+  for a real run), `jev-types.ts` (wire types, never imported outside this folder),
+  `jev-client.ts` (fetch + timeout + HTTP error mapping, no retries), and
+  `jev-router-provider.ts` (normalizes into `RoutingDecision`)).
 - `src/policy/` — `policy-rules.ts` (the ALLOW/REQUIRE_REVIEW/DENY table),
   `policy-engine.ts`.
 - `src/pipeline/` — `derive-action.ts`, `execute-action.ts`, `run-decision.ts` (the
   orchestrator: the only place decision → policy → execution are wired together).
 - `src/tools/` — deterministic mock `docs`/`github`/`jira` tools over fixtures in
   `src/tools/fixtures/`.
+- `benchmark/` — `datasets/routing-v1.0.json` (locked ground truth),
+  `reports/` (`phase3-review.md`, `phase4-jev-research.md`).
 - `app/api/decide/route.ts` — the server boundary; the only caller of `runDecision`.
-  Keeps future Jev/Claude API keys server-side.
+  Accepts a `provider` name (`"mock"` | `"jev"`) and resolves it to a
+  `RouterProvider` server-side — the client only ever sends a name, never a key.
 - `app/page.tsx`, `app/components/` — the Decision Lab UI (client-side).
 
 ## Commands
 
 `npm run dev` / `npm run build` / `npm test` (vitest) / `npm run typecheck` /
-`npm run lint`.
+`npm run lint` / `npm run benchmark:baseline` (Phase 2/3 heuristic baselines only —
+never a Jev/Claude benchmark; see `scripts/phase3-baseline.ts`).
 
 ## Repo
 

@@ -1,16 +1,36 @@
 import { NextResponse } from "next/server";
 import {
   InvalidProviderOutputError,
+  ProviderAuthenticationError,
+  ProviderAuthorizationError,
+  ProviderBillingError,
+  ProviderRateLimitError,
+  ProviderRequestError,
   ProviderTimeoutError,
   ProviderUnavailableError,
 } from "@/domain/errors";
 import { DEFAULT_CONFIDENCE_THRESHOLD, runDecision } from "@/pipeline/run-decision";
+import { JevRouterProvider } from "@/providers/jev/jev-router-provider";
+import type { RouterProvider } from "@/providers/router-provider";
+
+const PROVIDER_NAMES = ["mock", "jev"] as const;
+type ProviderName = (typeof PROVIDER_NAMES)[number];
+
+function isProviderName(value: unknown): value is ProviderName {
+  return typeof value === "string" && (PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+/** `undefined` means "use runDecision's own default" (the mock provider). */
+function resolveProvider(name: ProviderName): RouterProvider | undefined {
+  return name === "jev" ? new JevRouterProvider() : undefined;
+}
 
 /**
  * The server boundary for the decision pipeline. This is a plain Next.js
- * Route Handler — the smallest mechanism that keeps provider calls (today:
- * none, just the mock; Phase 4-5: Jev/Claude API keys) entirely server-side.
- * The client never imports the pipeline or a provider directly.
+ * Route Handler — the smallest mechanism that keeps provider calls (Phase 4:
+ * Jev via Vercel AI Gateway; Phase 5: Claude) entirely server-side. The
+ * client never imports the pipeline or a provider directly, and never sees
+ * an API key — it only ever sends a `provider` name.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -20,26 +40,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { prompt, confidenceThreshold } = (body ?? {}) as {
+  const { prompt, confidenceThreshold, provider } = (body ?? {}) as {
     prompt?: unknown;
     confidenceThreshold?: unknown;
+    provider?: unknown;
   };
 
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
     return NextResponse.json({ error: "`prompt` is required." }, { status: 400 });
   }
 
+  if (provider !== undefined && !isProviderName(provider)) {
+    return NextResponse.json({ error: `\`provider\` must be one of: ${PROVIDER_NAMES.join(", ")}.` }, { status: 400 });
+  }
+
   const threshold =
     typeof confidenceThreshold === "number" ? confidenceThreshold : DEFAULT_CONFIDENCE_THRESHOLD;
 
   try {
-    const trace = await runDecision(prompt, { confidenceThreshold: threshold });
+    const trace = await runDecision(prompt, {
+      confidenceThreshold: threshold,
+      provider: resolveProvider(provider ?? "mock"),
+    });
     return NextResponse.json(trace);
   } catch (error) {
     if (
       error instanceof InvalidProviderOutputError ||
       error instanceof ProviderTimeoutError ||
-      error instanceof ProviderUnavailableError
+      error instanceof ProviderUnavailableError ||
+      error instanceof ProviderAuthenticationError ||
+      error instanceof ProviderAuthorizationError ||
+      error instanceof ProviderBillingError ||
+      error instanceof ProviderRequestError ||
+      error instanceof ProviderRateLimitError
     ) {
       return NextResponse.json({ error: `Technical failure: ${error.message}` }, { status: 502 });
     }

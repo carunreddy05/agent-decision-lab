@@ -13,8 +13,12 @@ const EXAMPLE_PROMPTS = [
   "Check ENG-142 and find the code change that fixed it.",
 ];
 
+const PROVIDER_OPTIONS = [
+  { value: "mock" as const, label: "Mock Router", note: "deterministic keyword heuristic — simulation only" },
+  { value: "jev" as const, label: "Jev (jev-1.13.0)", note: "real provider, via Vercel AI Gateway" },
+];
+
 const FUTURE_MODES = [
-  { label: "Jev", note: "coming in Phase 4" },
   { label: "Claude", note: "coming in Phase 5" },
   { label: "Hybrid", note: "coming in Phase 6" },
 ];
@@ -23,6 +27,7 @@ const DEFAULT_THRESHOLD = 0.8;
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
+  const [provider, setProvider] = useState<(typeof PROVIDER_OPTIONS)[number]["value"]>("mock");
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<Trace | null>(null);
@@ -36,7 +41,7 @@ export default function Home() {
       const response = await fetch("/api/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, confidenceThreshold: threshold }),
+        body: JSON.stringify({ prompt, confidenceThreshold: threshold, provider }),
       });
       const body = await response.json();
       if (!response.ok) {
@@ -79,8 +84,8 @@ export default function Home() {
               <strong className="text-neutral-700 dark:text-neutral-300">
                 Software stays in control.
               </strong>{" "}
-              This is the architecture being tested — Jev and Claude aren&apos;t wired up yet, so
-              every run below uses a deterministic mock router.
+              This is the architecture being tested. Jev is wired up as a real provider (Vercel AI
+              Gateway, model jev-1.13.0); Claude is not wired up yet.
             </p>
             <p>
               <strong className="text-neutral-700 dark:text-neutral-300">Decision:</strong> a
@@ -102,9 +107,21 @@ export default function Home() {
         </details>
 
         <div className="mb-6 flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs font-semibold text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
-            Mock Router — Simulation
-          </span>
+          {PROVIDER_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setProvider(option.value)}
+              title={option.note}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                provider === option.value
+                  ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                  : "border-neutral-300 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
           {FUTURE_MODES.map((mode) => (
             <span
               key={mode.label}
@@ -140,7 +157,7 @@ export default function Home() {
 
           <div className="flex items-center gap-3 text-sm">
             <label htmlFor="threshold" className="text-neutral-500 dark:text-neutral-400">
-              Escalation threshold
+              Decision confidence threshold
             </label>
             <input
               id="threshold"
@@ -158,7 +175,8 @@ export default function Home() {
           </div>
           <p className="text-xs text-neutral-400 dark:text-neutral-500">
             This threshold controls escalation behavior. It does not control authorization —
-            policy decisions never change with it.
+            policy decisions never change with it. Provider-reported decision signal used for
+            experimental escalation; not assumed to be calibrated probability of correctness.
           </p>
 
           <button

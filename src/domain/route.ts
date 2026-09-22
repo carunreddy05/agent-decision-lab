@@ -9,7 +9,15 @@ export interface RoutingRequest {
 export interface UsageMetadata {
   inputTokens?: number;
   outputTokens?: number;
+  /** Our own after-the-fact estimate from a token count and a price assumption. */
   estimatedCostUsd?: number;
+  /**
+   * A dollar figure the provider itself reported for this request (e.g. an
+   * AI-gateway's per-call cost field). Kept separate from `estimatedCostUsd`
+   * on purpose — one is measured by the provider, the other is our guess,
+   * and conflating them would misrepresent which is which in benchmark data.
+   */
+  providerReportedCostUsd?: number;
 }
 
 /** Provider-reported metadata that is safe to log/display (no secrets, no raw provider payloads). */
@@ -31,4 +39,12 @@ export interface RoutingDecision {
   latencyMs: number;
   usage?: UsageMetadata;
   rawMetadata?: SafeMetadata;
+  /**
+   * Which versioned routing instruction set produced this decision (e.g.
+   * "routing-spec-v1"). Undefined for providers that don't take a spec (the
+   * mock heuristic). Recorded here, not just in the spec source file, so a
+   * benchmark artifact can say exactly what prompt version a given decision
+   * ran under without cross-referencing run metadata.
+   */
+  routingSpecVersion?: string;
 }
