@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# benchmark run artifacts (Phase 7) — never auto-committed; the dataset,
+# reports, and benchmark source code are not affected by this rule.
+/benchmark/results/

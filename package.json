@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "benchmark:baseline": "tsx scripts/phase3-baseline.ts"
+    "benchmark:baseline": "tsx scripts/phase3-baseline.ts",
+    "benchmark": "tsx scripts/benchmark-runner.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
